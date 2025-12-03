@@ -57,3 +57,10 @@ Por ejemplo, al configurar Prowlarr en Radarr, usa `http://radarr:7878` como URL
 user: test
 pass: 123456
 
+--
+configure prowlarr como indexer, agregue solo BitSearch.
+Luego configuro desde prowlarr la integracion con radarr y desde radarr el indexer prowlarr.
+
+importas las peliculas desde el directorio "download"
+Desde "library import" seleccionando la carpeta te permite importarlo.
+
