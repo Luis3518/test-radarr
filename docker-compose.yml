@@ -37,7 +37,7 @@ services:
     volumes:
       - ./bazarr/data:/config
       - ./movies:/movies
-      - ./downloads:/tv
+      - ./downloads:/downloads
     ports:
       - 6767:6767
     restart: unless-stopped
