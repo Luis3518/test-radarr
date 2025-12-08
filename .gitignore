@@ -1,13 +1,39 @@
-# Ignorar contenido de movies pero mantener la carpeta
 movies/*
 !movies/.gitkeep
 
-# Ignorar contenido de downloads pero mantener la carpeta
 downloads/*
 !downloads/.gitkeep
 
-# Ignorar datos de configuración de las aplicaciones
+
 radarr/data/
 prowlarr/data/
 bazarr/data/
+
+
+bazarr/providers/*
+
+!bazarr/providers/*.py
+
+bazarr/providers/*/
+
+bazarr/providers/__pycache__/
+bazarr/providers/**/__pycache__/
+bazarr/providers/**/*.pyc
+bazarr/providers/**/*.pyo
+bazarr/providers/**/*.pyd
+
+
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+.DS_Store
+Thumbs.db
+desktop.ini
 

@@ -36,6 +36,7 @@ services:
       - TZ=Etc/UTC
     volumes:
       - ./bazarr/data:/config
+      - ./bazarr/providers:/app/bazarr/bin/custom_libs/subliminal_patch/providers
       - ./movies:/movies
       - ./downloads:/downloads
     ports:
