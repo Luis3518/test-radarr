@@ -67,3 +67,17 @@ Por ejemplo, al configurar Prowlarr en Radarr, usa `http://radarr:7878` como URL
 2. **Integración con Radarr:**
    - Configurar la integración desde Prowlarr hacia Radarr
    - Configurar el indexer Prowlarr desde Radarr
+
+## Provider personalizado: Subtis
+
+Para que aparezca `subtis` dentro de los proveedores disponibles hay que recompilar el frontend de Bazarr editando el `list.ts` para agregar el elemento correspondiente y copiar el build:
+
+```typescript
+{
+  key: "subtis",
+  name: "subtis",
+  description: "Encontrá el subtítulo perfecto para cualquier película",
+}
+```
+
+
