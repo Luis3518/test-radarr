@@ -48,16 +48,22 @@ Para que los servicios se comuniquen entre sí dentro de Docker, usa los nombres
 
 Por ejemplo, al configurar Prowlarr en Radarr, usa `http://radarr:7878` como URL del servidor.
 
-## Notas
-- El contenedor se reinicia automáticamente si se detiene inesperadamente
-- Los datos persisten en las carpetas del proyecto
-- Cambia la zona horaria en el archivo docker-compose.yml si es necesario (actual: UTC)
+## Configuración inicial básica
 
---
-configure prowlarr como indexer, agregue solo BitSearch.
-Luego configuro desde prowlarr la integracion con radarr y desde radarr el indexer prowlarr.
+### Radarr
+1. Importar películas desde el directorio `downloads`
+2. Usar "Library Import" seleccionando la carpeta para importar el contenido
 
-importas las peliculas desde el directorio "download"
-Desde "library import" seleccionando la carpeta te permite importarlo.
+### Bazarr
+1. **Conectar a Radarr:** Configurar la conexión con el servidor Radarr
+2. **Agregar provider:** Yify Subtitles funciona bien como proveedor
+3. **Crear perfil de subtítulos:**
+   - Para test inicial: varios idiomas
+   - Para desarrollo de subtítulos: usar solo español (buscar películas sin subtítulos)
+4. **Cambiar perfil de subtítulos:** Desde el apartado películas usando "Mass Edit"
 
-yifi subtitles me funcionó
+### Prowlarr
+1. **Configurar como indexer:** Agregar BitSearch como indexer de prueba
+2. **Integración con Radarr:**
+   - Configurar la integración desde Prowlarr hacia Radarr
+   - Configurar el indexer Prowlarr desde Radarr
