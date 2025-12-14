@@ -7,8 +7,9 @@ from urllib.parse import quote
 from requests import Session
 from subliminal.video import Movie
 from subliminal_patch.providers import Provider
-from subliminal_patch.subtitle import Subtitle
+from subliminal_patch.subtitle import Subtitle, guess_matches
 from subzero.language import Language
+from guessit import guessit
 
 __version__ = "0.8.7"
 
@@ -33,10 +34,11 @@ class SubtisSubtitle(Subtitle):
         return self.page_link
 
     def get_matches(self, video):
+        """Calculate matching scores for the subtitle."""
         matches = set()
 
         if isinstance(video, Movie):
-            matches.update(["title", "year"])
+            matches |= guess_matches(video, guessit(self._title, {"type": "movie"}))
 
         return matches
 
