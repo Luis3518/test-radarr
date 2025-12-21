@@ -11,7 +11,7 @@ from subliminal_patch.subtitle import Subtitle, guess_matches
 from subzero.language import Language
 from guessit import guessit
 
-__version__ = "0.8.7"
+__version__ = "0.8.9"
 
 root_logger = logging.getLogger()
 
