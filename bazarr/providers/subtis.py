@@ -1,41 +1,69 @@
 # -*- coding: utf-8 -*-
+"""Subtis provider for subliminal."""
+
+from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
+from guessit import guessit
 from requests import Session
-from subliminal.video import Movie
+from requests.exceptions import HTTPError, RequestException, Timeout
+from subliminal.video import Episode, Movie
 from subliminal_patch.providers import Provider
 from subliminal_patch.subtitle import Subtitle, guess_matches
 from subzero.language import Language
-from guessit import guessit
 
-__version__ = "0.8.9"
+if TYPE_CHECKING:
+    from subliminal.video import Video as SubtitleVideo
 
-root_logger = logging.getLogger()
+__version__ = "0.9.0"
+
+logger = logging.getLogger(__name__)
+
+API_BASE_URL = "https://api.subt.is/v1"
+USER_AGENT = f"Bazarr/Subtis/{__version__}"
+REQUEST_TIMEOUT_SECONDS = 10
+DOWNLOAD_TIMEOUT_SECONDS = 30
 
 
 class SubtisSubtitle(Subtitle):
-    provider_name = "subtis"
-    hash_verifiable = False
+    """Subtitle representation for the Subtis provider.
 
-    def __init__(self, language, video, page_link, title, download_url):
+    Represents a Spanish subtitle from the subt.is API with metadata
+    for matching against video files.
+    """
+
+    provider_name: str = "subtis"
+    hash_verifiable: bool = False
+
+    def __init__(
+        self,
+        language: Language,
+        video: Movie,
+        page_link: str,
+        title: str,
+        download_url: str,
+        is_synced: bool = True,
+    ) -> None:
         super(SubtisSubtitle, self).__init__(
             language, hearing_impaired=False, page_link=page_link
         )
         self.video = video
         self.download_url = download_url
+        self.is_synced = is_synced
         self._title = str(title).strip()
-        self.release_info = self._title
+        sync_indicator = "" if is_synced else " [fuzzy match]"
+        self.release_info = f"{self._title}{sync_indicator}"
 
     @property
-    def id(self):
+    def id(self) -> str:
         return self.page_link
 
-    def get_matches(self, video):
-        """Calculate matching scores for the subtitle."""
-        matches = set()
+    def get_matches(self, video: SubtitleVideo) -> set[str]:
+        matches: set[str] = set()
 
         if isinstance(video, Movie):
             matches |= guess_matches(video, guessit(self._title, {"type": "movie"}))
@@ -44,92 +72,184 @@ class SubtisSubtitle(Subtitle):
 
 
 class SubtisProvider(Provider):
-    languages = {Language.fromalpha2("es")}
-    video_types = (Movie,)
-    provider_name = "subtis"
-    version = __version__
+    """Subtis subtitle provider for Spanish language subtitles.
 
-    def __init__(self):
-        self.session = None
+    Searches the subt.is API for subtitles by matching video file name
+    and size. Falls back to fuzzy matching by filename only if exact
+    match fails. Currently supports movies only.
+    """
 
-    def initialize(self):
+    languages: set[Language] = {Language.fromalpha2("es")}
+    video_types: tuple[type[Movie], ...] = (Movie,)
+    provider_name: str = "subtis"
+    version: str = __version__
+
+    def __init__(self) -> None:
+        self.session: Session | None = None
+
+    def initialize(self) -> None:
         self.session = Session()
         self.session.headers.update(
-            {"User-Agent": f"Bazarr/Subtis/{__version__}", "Accept": "application/json"}
+            {
+                "User-Agent": USER_AGENT,
+                "Accept": "application/json",
+            }
         )
 
-    def terminate(self):
-        if self.session:
+    def terminate(self) -> None:
+        if self.session is not None:
             self.session.close()
+            self.session = None
 
-    def query(self, language, video):
-        """Query subtitles for a given video."""
-        if not video.name or not video.size:
-            root_logger.info("Subtis: Missing video name or size")
+    def _build_subtitle_url(self, file_size: int, filename: str) -> str:
+        encoded_filename = quote(filename, safe="")
+        return f"{API_BASE_URL}/subtitle/file/name/{file_size}/{encoded_filename}"
+
+    def _build_alternative_url(self, filename: str) -> str:
+        encoded_filename = quote(filename, safe="")
+        return f"{API_BASE_URL}/subtitle/file/alternative/{encoded_filename}"
+
+    def _parse_api_response(
+        self,
+        response_data: dict[str, object],
+    ) -> tuple[str, str] | None:
+        """Extract subtitle link and title from API response.
+
+        Returns tuple of (subtitle_link, title_name) or None if data is missing.
+        """
+        if not isinstance(response_data, dict):
+            return None
+
+        subtitle_data = response_data.get("subtitle")
+        if not isinstance(subtitle_data, dict):
+            return None
+
+        subtitle_link = subtitle_data.get("subtitle_link")
+        if not isinstance(subtitle_link, str) or not subtitle_link:
+            return None
+
+        title_data = response_data.get("title", {})
+        title_name = (
+            title_data.get("title_name", "Unknown")
+            if isinstance(title_data, dict)
+            else "Unknown"
+        )
+
+        return subtitle_link, str(title_name)
+
+    def _fetch_subtitle(
+        self,
+        url: str,
+        filename: str,
+    ) -> tuple[str, str] | None:
+        """Fetch and parse subtitle from URL.
+
+        Returns tuple of (subtitle_link, title_name) or None if not found.
+        """
+        try:
+            response = self.session.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            data = response.json()
+            return self._parse_api_response(data)
+        except Timeout:
+            logger.warning("Request timed out for %s", filename)
+        except HTTPError:
+            pass  # Expected for 404 (not found)
+        except RequestException as error:
+            logger.warning("Network error for %s: %s", filename, error)
+        except ValueError as error:
+            logger.warning("Invalid JSON response for %s: %s", filename, error)
+        return None
+
+    def query(self, language: Language, video: Movie | Episode) -> list[SubtisSubtitle]:
+        if isinstance(video, Episode):
+            logger.debug("TV show support not yet implemented")
+            return []
+
+        if not video.name:
+            logger.warning("Missing video name")
             return []
 
         filename = os.path.basename(video.name)
-        encoded_name = quote(filename)
-        url = f"https://api.subt.is/v1/subtitle/file/name/{video.size}/{encoded_name}"
 
-        try:
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
+        # Try primary search (exact match by size + filename)
+        if video.size:
+            primary_url = self._build_subtitle_url(video.size, filename)
+            parsed = self._fetch_subtitle(primary_url, filename)
+            if parsed:
+                subtitle_link, title_name = parsed
+                return [
+                    SubtisSubtitle(
+                        language=language,
+                        video=video,
+                        page_link=primary_url,
+                        title=title_name,
+                        download_url=subtitle_link,
+                        is_synced=True,
+                    )
+                ]
 
-            data = response.json()
+        # Fallback to alternative search (fuzzy match by filename only)
+        alternative_url = self._build_alternative_url(filename)
+        parsed = self._fetch_subtitle(alternative_url, filename)
+        if parsed:
+            subtitle_link, title_name = parsed
+            return [
+                SubtisSubtitle(
+                    language=language,
+                    video=video,
+                    page_link=alternative_url,
+                    title=title_name,
+                    download_url=subtitle_link,
+                    is_synced=False,
+                )
+            ]
 
-            if not isinstance(data, dict):
-                root_logger.info("Subtis: Invalid response format")
-                return []
+        logger.info("No subtitle found for %s", filename)
+        return []
 
-            subtitle_data = data.get("subtitle", {})
-            subtitle_link = subtitle_data.get("subtitle_link")
-
-            if not subtitle_link:
-                root_logger.info("Subtis: No subtitle found for %s", filename)
-                return []
-
-            title_name = data.get("title", {}).get("title_name", "Unknown")
-
-            subtitle = SubtisSubtitle(
-                language=language,
-                video=video,
-                page_link=url,
-                title=title_name,
-                download_url=subtitle_link,
-            )
-
-            return [subtitle]
-
-        except Exception as e:
-            root_logger.info("Subtis: Error searching for %s: %s", filename, e)
-            return []
-
-    def list_subtitles(self, video, languages):
-        subtitles = []
+    def list_subtitles(
+        self,
+        video: Movie | Episode,
+        languages: set[Language],
+    ) -> list[SubtisSubtitle]:
+        subtitles: list[SubtisSubtitle] = []
         for language in languages:
             subtitles.extend(self.query(language, video))
         return subtitles
 
-    def download_subtitle(self, subtitle):
-        """Download subtitle content."""
+    def download_subtitle(self, subtitle: SubtisSubtitle) -> None:
         if not subtitle.download_url:
-            root_logger.info("Subtis: No download URL available")
+            logger.warning("No download URL available")
             return
 
         try:
-            response = self.session.get(subtitle.download_url, timeout=30)
+            response = self.session.get(
+                subtitle.download_url,
+                timeout=DOWNLOAD_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
 
             if not response.content:
-                root_logger.info("Subtis: Empty subtitle content")
+                logger.warning("Empty subtitle content")
                 return
 
             subtitle.content = response.content
 
-        except Exception as e:
-            root_logger.info(
-                "Subtis: Exception during download from %s: %s",
+        except Timeout:
+            logger.warning(
+                "Download timed out from %s",
                 subtitle.download_url,
-                str(e),
+            )
+        except HTTPError as error:
+            logger.warning(
+                "HTTP error %s downloading from %s",
+                error.response.status_code,
+                subtitle.download_url,
+            )
+        except RequestException as error:
+            logger.warning(
+                "Network error downloading from %s: %s",
+                subtitle.download_url,
+                error,
             )
