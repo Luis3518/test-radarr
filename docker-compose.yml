@@ -35,9 +35,7 @@ services:
       - PGID=1000
       - TZ=Etc/UTC
     volumes:
-      - ./bazarr/data:/config
       - ./bazarr/providers:/app/bazarr/bin/custom_libs/subliminal_patch/providers
-      - ./bazarr/frontend/build:/app/bazarr/bin/frontend/build
       - ./movies:/movies
       - ./downloads:/downloads
     ports:
